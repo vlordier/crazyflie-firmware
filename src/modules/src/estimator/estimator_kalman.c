@@ -77,6 +77,7 @@
 
 #include "statsCnt.h"
 #include "rateSupervisor.h"
+#include "periodicDeadline.h"
 
 // Measurement models
 #include "mm_distance.h"
@@ -231,12 +232,12 @@ static void kalmanTask(void* parameters) {
 
     // Run the system dynamics to predict the state forward.
     // if (accSubSampler.count > 0 && gyroSubSampler.count > 0) {
-    if (nowMs >= nextPredictionMs) {
+    if (periodicDeadlineIsDue(nowMs, nextPredictionMs)) {
       axis3fSubSamplerFinalize(&accSubSampler);
       axis3fSubSamplerFinalize(&gyroSubSampler);
 
       kalmanCorePredict(&coreData, &accSubSampler.subSample, &gyroSubSampler.subSample, nowMs, quadIsFlying);
-      nextPredictionMs = nowMs + PREDICTION_UPDATE_INTERVAL_MS;
+      nextPredictionMs = periodicDeadlineAdvance(nextPredictionMs, nowMs, PREDICTION_UPDATE_INTERVAL_MS);
 
       STATS_CNT_RATE_EVENT(&predictionCounter);
 
