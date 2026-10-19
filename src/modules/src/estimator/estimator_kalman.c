@@ -240,8 +240,11 @@ static void kalmanTask(void* parameters) {
     kalmanCoreDecoupleXY(&coreData);
   #endif
 
-    // Run the system dynamics to predict the state forward.
-    if (nowMs >= nextPredictionMs) {
+    // Run the system dynamics only after both sensors supplied a sample.
+    // The samplers start at zero, and predicting from those values after
+    // calibration delay integrates gravity over the entire startup interval.
+    if (nowMs >= nextPredictionMs &&
+        accSubSampler.count > 0 && gyroSubSampler.count > 0) {
       axis3fSubSamplerFinalize(&accSubSampler);
       axis3fSubSamplerFinalize(&gyroSubSampler);
 
