@@ -101,7 +101,9 @@
 
 #define PID_VEL_ROLL_MAX 20.0f
 #define PID_VEL_PITCH_MAX 20.0f
-#define PID_VEL_THRUST_BASE 36000.0f
+// Hover feed-forward for the 28.2 g CrazySim CF2 model. The SITL
+// power-distribution curve maps a 37673 motor ratio to mg / 4 per rotor.
+#define PID_VEL_THRUST_BASE 37673.0f
 #define PID_VEL_THRUST_BASE_BARO_Z_HOLD 38000.0f
 #define PID_VEL_THRUST_MIN 20000.0f
 
