@@ -200,9 +200,11 @@ static void sensorsTask(void *param)
   {
     // Wait for a new sensor message to arrive
     crtpReceivePacketBlock(CRTP_PORT_SETPOINT_SIM, &p);
+    bool imuSampleReceived = false;
     switch (p.data[0])
     {
       case SENSOR_GYRO_ACC_SIM:
+        imuSampleReceived = true;
         processAccGyroMeasurements(&(p.data[1]));
         measurement.type = MeasurementTypeAcceleration;
         measurement.data.acceleration.acc = sensors.acc;
@@ -276,7 +278,11 @@ static void sensorsTask(void *param)
       lastGyroBiasFound =  gyroBiasFound;
       crtpSendPacket(&p);
     }
-    xSemaphoreGive(dataReady);
+    // The stabilizer consumes the latest gyro/accelerometer sample. Other
+    // simulated sensor packets (for example 50-Hz barometer updates) must not
+    // schedule an extra control iteration with stale IMU data.
+    if (imuSampleReceived)
+      xSemaphoreGive(dataReady);
   }
 }
 
