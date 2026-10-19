@@ -267,7 +267,9 @@ void rateSupervisorTask(void *pvParameters) {
       // Validate the rate
       if (!rateSupervisorValidate(&rateSupervisorContext, xTaskGetTickCount())) {
         if (!rateWarningDisplayed) {
-          DEBUG_PRINT("WARNING: stabilizer loop rate is off (%lu)\n", rateSupervisorLatestCount(&rateSupervisorContext));
+          DEBUG_PRINT("WARNING: stabilizer loop rate is off (%lu Hz; expected %lu Hz)\n",
+                      (unsigned long)rateSupervisorLatestCount(&rateSupervisorContext),
+                      (unsigned long)RATE_MAIN_LOOP);
           rateWarningDisplayed = true;
         }
       }
@@ -289,7 +291,7 @@ void rateSupervisorTask(void *pvParameters) {
 static void stabilizerTask(void* param)
 {
   stabilizerStep_t stabilizerStep;
-  uint32_t lastWakeTime;
+  TickType_t lastWakeTime;
   vTaskSetApplicationTaskTag(0, (void*)TASK_STABILIZER_ID_NBR);
 
   //Wait for the system to be fully started to start stabilization loop
@@ -307,7 +309,8 @@ static void stabilizerTask(void* param)
 
   systemWaitStart();
   DEBUG_PRINT("Starting stabilizer loop\n");
-  rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), M2T(1000), 997, 1003, 1);
+  rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), M2T(1000),
+                     RATE_MAIN_LOOP - 3, RATE_MAIN_LOOP + 3, 1);
   xRateSupervisorSemaphore = xSemaphoreCreateBinary();
   STATIC_MEM_TASK_CREATE(rateSupervisorTask, rateSupervisorTask, RATE_SUPERVISOR_TASK_NAME, NULL, RATE_SUPERVISOR_TASK_PRI);
 
