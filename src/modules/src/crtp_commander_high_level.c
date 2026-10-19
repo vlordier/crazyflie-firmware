@@ -421,6 +421,9 @@ void crtpCommanderHighLevelTask(void * prm)
   while(1) {
     crtpReceivePacketBlock(CRTP_PORT_SETPOINT_HL, &p);
 
+#ifdef CRAZYSIM_DIAGNOSTICS
+    DEBUG_PRINT("TRACE_HL_RX header=%02x size=%u data=%02x\n", (unsigned int)p.header, (unsigned int)p.size, (unsigned int)p.data[0]);
+#endif
     int ret = handleCommand(p.data[0], &p.data[1]);
 
     //answer
