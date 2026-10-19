@@ -345,7 +345,7 @@ static void stabilizerTask(void* param)
 
       controller(&control, &setpoint, &sensorData, &state, stabilizerStep);
 #ifdef NCS_SITL_DIAGNOSTICS
-      if (stabilizerStep % 100 == 0) {
+      if (stabilizerStep % (RATE_MAIN_LOOP / 20) == 0) {
         DEBUG_PRINT("NCS_STAB tick=%lu step=%lu pos=%.5f,%.5f,%.5f vel=%.5f,%.5f,%.5f attitude_deg=%.4f,%.4f,%.4f setpoint_z=%.5f thrust=%.5f\n",
             (unsigned long)xTaskGetTickCount(), (unsigned long)stabilizerStep,
             state.position.x, state.position.y, state.position.z,

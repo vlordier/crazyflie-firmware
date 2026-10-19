@@ -356,7 +356,7 @@ void processAccGyroMeasurements(const uint8_t *buffer)
   applyAxis3fLpf((lpf2pData*)(&accLpf), &sensors.acc);
 
 #ifdef NCS_SITL_DIAGNOSTICS
-  if (++diagnosticSampleCount % 100 == 0) {
+  if (++diagnosticSampleCount % (RATE_MAIN_LOOP / 20) == 0) {
     DEBUG_PRINT("NCS_IMU tick=%lu raw_acc=%d,%d,%d raw_gyro=%d,%d,%d acc_g=%.5f,%.5f,%.5f gyro_dps=%.5f,%.5f,%.5f\n",
         (unsigned long)xTaskGetTickCount(),
         accData->x, accData->y, accData->z,
