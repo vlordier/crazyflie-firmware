@@ -117,7 +117,7 @@
 #define PID_POS_Y_KD 0.0f
 #define PID_POS_Y_KFF 0.0f
 
-#define PID_POS_Z_KP 2.0f
+#define PID_POS_Z_KP 0.5f
 #define PID_POS_Z_KI 0.5f
 #define PID_POS_Z_KD 0.0f
 #define PID_POS_Z_KFF 0.0f
