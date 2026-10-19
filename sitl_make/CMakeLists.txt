@@ -17,6 +17,7 @@ set(CRAZYSIM_RATE_MAIN_LOOP "1000" CACHE STRING "CrazySim stabilizer loop freque
 if(NOT CRAZYSIM_RATE_MAIN_LOOP STREQUAL "500" AND NOT CRAZYSIM_RATE_MAIN_LOOP STREQUAL "1000")
   message(FATAL_ERROR "CRAZYSIM_RATE_MAIN_LOOP must be 500 or 1000")
 endif()
+option(CRAZYSIM_DIAGNOSTICS "Log sampled SITL IMU, estimator, setpoint, and thrust values" OFF)
 
 #######################
 ## Find Dependencies ##
@@ -66,6 +67,9 @@ add_custom_target(version_cf ALL DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../version.
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -Wno-unused-variable -std=gnu11 -g3 -Wall -Wno-maybe-uninitialized -Wno-error=maybe-uninitialized -Wmissing-braces -fno-strict-aliasing -ffunction-sections -fdata-sections -Wdouble-promotion -Wno-deprecated-declarations")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DESTIMATOR=StateEstimatorType${ESTIMATOR} -DCONTROLLER=ControllerType${CONTROLLER} -DCONFIG_SENSORS_SITL -DSENSORS_FORCE=SensorImplementation_sitl")
+if(CRAZYSIM_DIAGNOSTICS)
+  add_compile_definitions(NCS_SITL_DIAGNOSTICS)
+endif()
 
 #set (CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --specs=nano.specs -T ${CF2_SITL_SRCS_DIR}/../tools/make/F405/linker/FLASH.ld")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wno-deprecated-declarations")

@@ -324,6 +324,9 @@ void processMagnetometerMeasurements(const uint8_t *buffer)
 void processAccGyroMeasurements(const uint8_t *buffer)
 {
   Axis3f accScaled;
+#ifdef NCS_SITL_DIAGNOSTICS
+  static uint32_t diagnosticSampleCount;
+#endif
 
   // (real value in G / SENSORS_G_PER_LSB_CFG) from gazebo SIM
   const Axis3i16 *accData = (Axis3i16 *) buffer;
@@ -351,6 +354,17 @@ void processAccGyroMeasurements(const uint8_t *buffer)
   accScaled.z =  (accData->z) * SENSORS_G_PER_LSB_CFG / accScale;
   sensorsAccAlignToGravity(&accScaled, &sensors.acc);
   applyAxis3fLpf((lpf2pData*)(&accLpf), &sensors.acc);
+
+#ifdef NCS_SITL_DIAGNOSTICS
+  if (++diagnosticSampleCount % 100 == 0) {
+    DEBUG_PRINT("NCS_IMU tick=%lu raw_acc=%d,%d,%d raw_gyro=%d,%d,%d acc_g=%.5f,%.5f,%.5f gyro_dps=%.5f,%.5f,%.5f\n",
+        (unsigned long)xTaskGetTickCount(),
+        accData->x, accData->y, accData->z,
+        gyroData->x, gyroData->y, gyroData->z,
+        sensors.acc.x, sensors.acc.y, sensors.acc.z,
+        sensors.gyro.x, sensors.gyro.y, sensors.gyro.z);
+  }
+#endif
 }
 
 static void sensorsDeviceInit(void)
