@@ -92,8 +92,9 @@ static void socketlinkTask(void *param)
       recvlen = recvfrom(fd, p.raw, sizeof(p.raw), 0, (struct sockaddr *)&remaddr, &addrlen);
       if (recvlen > 0){
         p.size = recvlen - 1; // We remove the header size
-        // xQueueSend(crtpPacketDelivery, &p, 0);
-        ASSERT(xQueueSend(crtpPacketDelivery, &p, 0) == pdPASS);
+        // Backpressure the UDP reader when the firmware router is briefly
+        // behind instead of turning one full queue into a fatal SITL assert.
+        ASSERT(xQueueSend(crtpPacketDelivery, &p, portMAX_DELAY) == pdPASS);
       } else {
         DEBUG_PRINT("error : %s \n" , strerror(errno));
       }
