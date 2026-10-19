@@ -42,6 +42,8 @@ such as: take-off, landing, polynomial trajectories.
 #include <errno.h>
 #include <math.h>
 
+#define DEBUG_MODULE "HL"
+
 /* FreeRtos includes */
 #include "FreeRTOS.h"
 #include "task.h"
@@ -57,6 +59,7 @@ such as: take-off, landing, polynomial trajectories.
 #include "commander.h"
 #include "stabilizer_types.h"
 #include "stabilizer.h"
+#include "debug.h"
 
 // Local types
 enum TrajectoryLocation_e {
@@ -421,8 +424,10 @@ void crtpCommanderHighLevelTask(void * prm)
   while(1) {
     crtpReceivePacketBlock(CRTP_PORT_SETPOINT_HL, &p);
 
-#ifdef CRAZYSIM_DIAGNOSTICS
-    DEBUG_PRINT("TRACE_HL_RX header=%02x size=%u data=%02x\n", (unsigned int)p.header, (unsigned int)p.size, (unsigned int)p.data[0]);
+#ifdef NCS_SITL_DIAGNOSTICS
+    DEBUG_PRINT("TRACE_HL_RX header=%02x size=%u data=%02x\n",
+                (unsigned int)p.header, (unsigned int)p.size,
+                (unsigned int)p.data[0]);
 #endif
     int ret = handleCommand(p.data[0], &p.data[1]);
 

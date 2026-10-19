@@ -225,7 +225,7 @@ void socketlinkInit()
               USBLINK_TASK_STACKSIZE, NULL, USBLINK_TASK_PRI-1, NULL);
 
   isInit = true;
-#ifdef CRAZYSIM_DIAGNOSTICS
+#ifdef NCS_SITL_DIAGNOSTICS
   DEBUG_PRINT("TRACE_CRTP_RX_STARTED\n");
 #endif
 }
