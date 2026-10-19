@@ -41,7 +41,7 @@ bool rateSupervisorValidate(rateSupervisor_t* context, const uint32_t osTimeMs) 
     bool result = true;
 
     context->count += 1;
-    if (osTimeMs > context->nextEvaluationTimeMs) {
+    if (osTimeMs >= context->nextEvaluationTimeMs) {
         uint32_t actual = context->count;
         if (actual < context->expectedMin || actual > context->expectedMax) {
             result = false;
