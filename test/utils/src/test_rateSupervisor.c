@@ -131,6 +131,43 @@ void testThatValidationPassesWithSkip() {
     TEST_ASSERT_TRUE(actual);
 }
 
+void testThat500HzRateIsAcceptedBy500HzBounds() {
+    rateSupervisorInit(&context, startTime, evaluationIntervall, 498, 501, 0);
+
+    for (uint32_t elapsedMs = 2; elapsedMs <= 1000; elapsedMs += 2) {
+        rateSupervisorValidate(&context, startTime + elapsedMs);
+    }
+    bool actual = rateSupervisorValidate(&context, startTime + 1001);
+
+    TEST_ASSERT_TRUE(actual);
+    TEST_ASSERT_EQUAL_UINT32(501, rateSupervisorLatestCount(&context));
+}
+
+void testThat1000HzRateIsAcceptedBy1000HzBounds() {
+    rateSupervisorInit(&context, startTime, evaluationIntervall, 997, 1003, 0);
+
+    for (uint32_t elapsedMs = 1; elapsedMs <= 1000; elapsedMs++) {
+        rateSupervisorValidate(&context, startTime + elapsedMs);
+    }
+    bool actual = rateSupervisorValidate(&context, startTime + 1001);
+
+    TEST_ASSERT_TRUE(actual);
+    TEST_ASSERT_EQUAL_UINT32(1001, rateSupervisorLatestCount(&context));
+}
+
+void testThatUnderspeedIsRejectedBy500HzBounds() {
+    rateSupervisorInit(&context, startTime, evaluationIntervall, 498, 501, 0);
+
+    for (uint32_t sample = 1; sample <= 460; sample++) {
+        const uint32_t elapsedMs = sample * 1000 / 460;
+        rateSupervisorValidate(&context, startTime + elapsedMs);
+    }
+    bool actual = rateSupervisorValidate(&context, startTime + 1001);
+
+    TEST_ASSERT_FALSE(actual);
+    TEST_ASSERT_EQUAL_UINT32(461, rateSupervisorLatestCount(&context));
+}
+
 void testThatValidationFailesAfterSkip() {
     // Fixture
     uint32_t skip = 1;

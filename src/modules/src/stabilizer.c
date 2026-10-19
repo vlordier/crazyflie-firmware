@@ -83,6 +83,11 @@ static STATS_CNT_RATE_DEFINE(stabilizerRate, 500);
 static rateSupervisor_t rateSupervisorContext;
 static bool rateWarningDisplayed = false;
 
+// Preserve the existing 997..1003 bounds at 1 kHz and scale them with SITL rate.
+#define RATE_SUPERVISOR_TOLERANCE_PER_MILLE 3
+#define RATE_SUPERVISOR_MIN (RATE_MAIN_LOOP * (1000 - RATE_SUPERVISOR_TOLERANCE_PER_MILLE) / 1000)
+#define RATE_SUPERVISOR_MAX (RATE_MAIN_LOOP * (1000 + RATE_SUPERVISOR_TOLERANCE_PER_MILLE) / 1000)
+
 static struct {
   // position - mm
   int16_t x;
@@ -293,7 +298,7 @@ static void stabilizerTask(void* param)
 
   systemWaitStart();
   DEBUG_PRINT("Starting stabilizer loop\n");
-  rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), M2T(1000), 997, 1003, 1);
+  rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), M2T(1000), RATE_SUPERVISOR_MIN, RATE_SUPERVISOR_MAX, 1);
 
   while(1) {
     // The sensor should unlock at 1kHz

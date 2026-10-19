@@ -13,6 +13,11 @@ endif()
 project(cf2_sitl VERSION 1.0.0)
 include(GNUInstallDirs)
 
+set(CRAZYSIM_RATE_MAIN_LOOP "1000" CACHE STRING "CrazySim stabilizer loop frequency in Hz (500 or 1000)")
+if(NOT CRAZYSIM_RATE_MAIN_LOOP STREQUAL "500" AND NOT CRAZYSIM_RATE_MAIN_LOOP STREQUAL "1000")
+  message(FATAL_ERROR "CRAZYSIM_RATE_MAIN_LOOP must be 500 or 1000")
+endif()
+
 #######################
 ## Find Dependencies ##
 #######################
@@ -246,7 +251,7 @@ add_executable(cf2 ${SRCS})
 
 target_link_libraries(cf2 ${CMAKE_THREAD_LIBS_INIT} m)
 
-target_compile_options(cf2 PUBLIC -DCONFIG_DECK_FORCE -DCONFIG_ESTIMATOR_KALMAN_ENABLE -DCONFIG_ESTIMATOR_UKF_ENABLE -DCRAZYFLIE_FW -DCONFIG_PLATFORM_SITL -DARCH_64)
+target_compile_options(cf2 PUBLIC -DCONFIG_DECK_FORCE -DCONFIG_ESTIMATOR_KALMAN_ENABLE -DCONFIG_ESTIMATOR_UKF_ENABLE -DCRAZYFLIE_FW -DCONFIG_PLATFORM_SITL -DARCH_64 -DRATE_MAIN_LOOP=${CRAZYSIM_RATE_MAIN_LOOP})
 target_compile_definitions(cf2 PUBLIC CONFIG_PLATFORM_SITL)
 
 # Check if linker supports --no-warn-rwx-segments (added in binutils 2.39)
