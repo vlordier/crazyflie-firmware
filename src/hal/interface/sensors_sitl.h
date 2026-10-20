@@ -29,6 +29,7 @@
 #define __SENSORS_SIM_H__
 
 #include "sensors.h"
+#include <stdint.h>
 
 void sensorsSimInit(void);
 bool sensorsSimTest(void);
@@ -41,5 +42,20 @@ bool sensorsSimReadAcc(Axis3f *acc);
 bool sensorsSimReadMag(Axis3f *mag);
 bool sensorsSimReadBaro(baro_t *baro);
 void sensorsSimSetAccMode(accModes accMode);
+
+#ifdef NCS_SITL_IMU_PROVENANCE
+typedef struct {
+  uint32_t sequence;
+  uint64_t simTimeNs;
+  uint32_t receiveTick;
+  uint32_t sequenceGapCount;
+  int16_t rawAcc[3];
+  int16_t rawGyro[3];
+  uint8_t sequenceIsGazeboHeader;
+  uint8_t valid;
+} sensorsSimImuProvenance_t;
+
+void sensorsSimGetImuProvenance(sensorsSimImuProvenance_t* provenance);
+#endif
 
 #endif // __SENSORS_SIM_H__

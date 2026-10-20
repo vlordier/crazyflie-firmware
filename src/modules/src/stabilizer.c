@@ -63,6 +63,10 @@
 #include "statsCnt.h"
 #include "static_mem.h"
 #include "rateSupervisor.h"
+#ifdef NCS_SITL_IMU_PROVENANCE
+#include "sensors_sitl.h"
+#include <string.h>
+#endif
 
 static bool isInit;
 
@@ -103,12 +107,24 @@ typedef struct {
   float controlOutput[4];
   uint16_t motorRatio[STABILIZER_NR_OF_MOTORS];
   uint8_t motorPacket[1 + 2 * STABILIZER_NR_OF_MOTORS];
+#ifdef NCS_SITL_IMU_PROVENANCE
+  uint32_t imuSequence;
+  uint32_t imuReceiveTick;
+  uint32_t imuSequenceGapCount;
+  int16_t imuRawAcc[3];
+  int16_t imuRawGyro[3];
+  uint8_t imuSequenceIsGazeboHeader;
+  uint8_t imuProvenanceValid;
+#endif
 } sitlTraceRecord_t;
 
 static sitlTraceRecord_t sitlTraceRing[NCS_SITL_TRACE_RING_CAPACITY];
 static uint32_t sitlTraceNext;
 static uint32_t sitlTraceCount;
 static uint32_t sitlTraceSkipped;
+#ifdef NCS_SITL_TRACE_DIAGNOSTICS
+static uint32_t sitlTraceOverwritten;
+#endif
 
 static void captureSitlTrace(const stabilizerStep_t step)
 {
@@ -121,6 +137,18 @@ static void captureSitlTrace(const stabilizerStep_t step)
   record->tick = (uint32_t)xTaskGetTickCount();
   record->step = step;
   record->imuTimestamp = sensorData.interruptTimestamp;
+#ifdef NCS_SITL_IMU_PROVENANCE
+  sensorsSimImuProvenance_t provenance = {0};
+  sensorsSimGetImuProvenance(&provenance);
+  record->imuTimestamp = provenance.simTimeNs;
+  record->imuSequence = provenance.sequence;
+  record->imuReceiveTick = provenance.receiveTick;
+  record->imuSequenceGapCount = provenance.sequenceGapCount;
+  memcpy(record->imuRawAcc, provenance.rawAcc, sizeof(record->imuRawAcc));
+  memcpy(record->imuRawGyro, provenance.rawGyro, sizeof(record->imuRawGyro));
+  record->imuSequenceIsGazeboHeader = provenance.sequenceIsGazeboHeader;
+  record->imuProvenanceValid = provenance.valid;
+#endif
   record->attitudeQuaternion[0] = state.attitudeQuaternion.x;
   record->attitudeQuaternion[1] = state.attitudeQuaternion.y;
   record->attitudeQuaternion[2] = state.attitudeQuaternion.z;
@@ -178,6 +206,11 @@ static void captureSitlTrace(const stabilizerStep_t step)
   if (sitlTraceCount < NCS_SITL_TRACE_RING_CAPACITY) {
     sitlTraceCount++;
   }
+#ifdef NCS_SITL_TRACE_DIAGNOSTICS
+  else {
+    sitlTraceOverwritten++;
+  }
+#endif
 }
 
 void stabilizerSitlTraceDump(void)
@@ -185,16 +218,48 @@ void stabilizerSitlTraceDump(void)
   const uint32_t first = sitlTraceNext >= sitlTraceCount
       ? sitlTraceNext - sitlTraceCount
       : NCS_SITL_TRACE_RING_CAPACITY - (sitlTraceCount - sitlTraceNext);
+#ifdef NCS_SITL_IMU_PROVENANCE
+  printf("NCS_TRACE_HEADER schema=2 records=%lu skipped=%lu overwritten=%lu stride=%u capacity=%u sampling_hz=%u record_bytes=%lu memory_bytes=%lu\n",
+      (unsigned long)sitlTraceCount, (unsigned long)sitlTraceSkipped,
+#ifdef NCS_SITL_TRACE_DIAGNOSTICS
+      (unsigned long)sitlTraceOverwritten, (unsigned)NCS_SITL_TRACE_STRIDE,
+#else
+      0UL, (unsigned)NCS_SITL_TRACE_STRIDE,
+#endif
+      (unsigned)NCS_SITL_TRACE_RING_CAPACITY,
+      (unsigned)(RATE_MAIN_LOOP / NCS_SITL_TRACE_STRIDE),
+      (unsigned long)sizeof(sitlTraceRecord_t),
+      (unsigned long)(sizeof(sitlTraceRecord_t) * NCS_SITL_TRACE_RING_CAPACITY));
+#else
   printf("NCS_TRACE_HEADER schema=1 records=%lu skipped=%lu stride=%u capacity=%u sampling_hz=%u record_bytes=%lu memory_bytes=%lu\n",
       (unsigned long)sitlTraceCount, (unsigned long)sitlTraceSkipped,
       (unsigned)NCS_SITL_TRACE_STRIDE, (unsigned)NCS_SITL_TRACE_RING_CAPACITY,
       (unsigned)(RATE_MAIN_LOOP / NCS_SITL_TRACE_STRIDE), (unsigned long)sizeof(sitlTraceRecord_t),
       (unsigned long)(sizeof(sitlTraceRecord_t) * NCS_SITL_TRACE_RING_CAPACITY));
+#endif
   for (uint32_t offset = 0; offset < sitlTraceCount; offset++) {
     const sitlTraceRecord_t *record =
         &sitlTraceRing[(first + offset) < NCS_SITL_TRACE_RING_CAPACITY
             ? first + offset
             : first + offset - NCS_SITL_TRACE_RING_CAPACITY];
+#ifdef NCS_SITL_IMU_PROVENANCE
+    printf("NCS_TRACE tick=%lu step=%lu imu_source_ns=%" PRIu64
+           " imu_seq=%lu imu_rx_tick=%lu imu_seq_gaps=%lu imu_seq_source=%u imu_provenance_valid=%u"
+           " raw_acc=%d,%d,%d raw_gyro=%d,%d,%d"
+           " quat=%.6f,%.6f,%.6f,%.6f gyro_dps=%.4f,%.4f,%.4f"
+           " acc_g=%.5f,%.5f,%.5f setpoint_att_deg=%.3f,%.3f,%.3f"
+           " z_m=%.5f setpoint_z_m=%.5f mode=%lu control=%.5f,%.5f,%.5f,%.5f"
+           " packet=%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x"
+           " motors=%u,%u,%u,%u\n",
+        (unsigned long)record->tick, (unsigned long)record->step,
+        record->imuTimestamp, (unsigned long)record->imuSequence,
+        (unsigned long)record->imuReceiveTick,
+        (unsigned long)record->imuSequenceGapCount,
+        (unsigned)record->imuSequenceIsGazeboHeader,
+        (unsigned)record->imuProvenanceValid,
+        record->imuRawAcc[0], record->imuRawAcc[1], record->imuRawAcc[2],
+        record->imuRawGyro[0], record->imuRawGyro[1], record->imuRawGyro[2],
+#else
     printf("NCS_TRACE tick=%lu step=%lu imu_us=%" PRIu64
            " quat=%.6f,%.6f,%.6f,%.6f gyro_dps=%.4f,%.4f,%.4f"
            " acc_g=%.5f,%.5f,%.5f setpoint_att_deg=%.3f,%.3f,%.3f"
@@ -203,6 +268,7 @@ void stabilizerSitlTraceDump(void)
            " motors=%u,%u,%u,%u\n",
         (unsigned long)record->tick, (unsigned long)record->step,
         record->imuTimestamp,
+#endif
         (double)record->attitudeQuaternion[0], (double)record->attitudeQuaternion[1],
         (double)record->attitudeQuaternion[2], (double)record->attitudeQuaternion[3],
         (double)record->gyroDps[0], (double)record->gyroDps[1], (double)record->gyroDps[2],

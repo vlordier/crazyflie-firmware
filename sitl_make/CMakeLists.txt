@@ -20,7 +20,15 @@ endif()
 option(CRAZYSIM_DIAGNOSTICS "Enable lightweight SITL readiness and command markers" OFF)
 option(CRAZYSIM_VERBOSE_DIAGNOSTICS "Print sampled SITL IMU and stabilizer state in real time" OFF)
 option(CRAZYSIM_TRACE_RING "Capture bounded per-loop SITL state and motor trace" OFF)
+option(CRAZYSIM_IMU_PROVENANCE "Capture sequence, source time, and raw IMU provenance in the SITL trace" OFF)
+option(CRAZYSIM_TRACE_DIAGNOSTICS "Capture ring overflow and skipped-record counters" OFF)
 set(CRAZYSIM_TRACE_RING_CAPACITY "32768" CACHE STRING "Maximum SITL diagnostic trace records")
+if(CRAZYSIM_TRACE_DIAGNOSTICS AND NOT CRAZYSIM_TRACE_RING)
+  message(FATAL_ERROR "CRAZYSIM_TRACE_DIAGNOSTICS requires CRAZYSIM_TRACE_RING=ON")
+endif()
+if(CRAZYSIM_IMU_PROVENANCE AND NOT CRAZYSIM_TRACE_RING)
+  message(FATAL_ERROR "CRAZYSIM_IMU_PROVENANCE requires CRAZYSIM_TRACE_RING=ON")
+endif()
 
 #######################
 ## Find Dependencies ##
@@ -279,6 +287,12 @@ target_link_libraries(cf2 ${CMAKE_THREAD_LIBS_INIT} m)
 
 target_compile_options(cf2 PUBLIC -DCONFIG_DECK_FORCE -DCONFIG_ESTIMATOR_KALMAN_ENABLE -DCONFIG_ESTIMATOR_UKF_ENABLE -DCRAZYFLIE_FW -DCONFIG_PLATFORM_SITL -DARCH_64 -DRATE_MAIN_LOOP=${CRAZYSIM_RATE_MAIN_LOOP})
 target_compile_definitions(cf2 PUBLIC CONFIG_PLATFORM_SITL)
+if(CRAZYSIM_IMU_PROVENANCE)
+  target_compile_definitions(cf2 PUBLIC NCS_SITL_IMU_PROVENANCE)
+endif()
+if(CRAZYSIM_TRACE_DIAGNOSTICS)
+  target_compile_definitions(cf2 PUBLIC NCS_SITL_TRACE_DIAGNOSTICS)
+endif()
 
 # Check if linker supports --no-warn-rwx-segments (added in binutils 2.39)
 execute_process(

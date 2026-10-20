@@ -102,6 +102,66 @@ static xSemaphoreHandle dataReady;
 static bool isInit = false;
 static sensorData_t sensors;
 
+#ifdef NCS_SITL_IMU_PROVENANCE
+static sensorsSimImuProvenance_t latestImuProvenance;
+static bool hasPreviousImuSequence;
+static uint32_t previousImuSequence;
+static uint32_t imuSequenceGapCount;
+
+static uint32_t readUint32Le(const uint8_t* source)
+{
+  uint32_t value = 0;
+  for (uint32_t index = 0; index < 4; index++) {
+    value |= (uint32_t)source[index] << (8U * index);
+  }
+  return value;
+}
+
+static uint64_t readUint64Le(const uint8_t* source)
+{
+  uint64_t value = 0;
+  for (uint32_t index = 0; index < 8; index++) {
+    value |= (uint64_t)source[index] << (8U * index);
+  }
+  return value;
+}
+
+static void captureImuProvenance(const CRTPPacket* packet)
+{
+  const uint32_t sensorDataBytes = sizeof(uint8_t) + 2U * sizeof(Axis3i16);
+  const uint32_t provenanceBytes = 4U + 8U + sizeof(uint8_t);
+  if (packet->size < sensorDataBytes + provenanceBytes) {
+    return;
+  }
+
+  const uint8_t* metadata = &packet->data[sensorDataBytes];
+  sensorsSimImuProvenance_t next = {0};
+  next.sequence = readUint32Le(metadata);
+  next.simTimeNs = readUint64Le(&metadata[4]);
+  next.sequenceIsGazeboHeader = metadata[12] != 0U;
+  next.receiveTick = (uint32_t)xTaskGetTickCount();
+  memcpy(next.rawAcc, &packet->data[1], sizeof(next.rawAcc));
+  memcpy(next.rawGyro, &packet->data[1 + sizeof(Axis3i16)], sizeof(next.rawGyro));
+  next.valid = 1U;
+
+  if (next.sequenceIsGazeboHeader) {
+    if (hasPreviousImuSequence) {
+      const uint32_t sequenceDelta = next.sequence - previousImuSequence;
+      if (sequenceDelta > 1U && sequenceDelta < 0x80000000U) {
+        imuSequenceGapCount += sequenceDelta - 1U;
+      }
+    }
+    previousImuSequence = next.sequence;
+    hasPreviousImuSequence = true;
+  }
+  next.sequenceGapCount = imuSequenceGapCount;
+
+  taskENTER_CRITICAL();
+  latestImuProvenance = next;
+  taskEXIT_CRITICAL();
+}
+#endif
+
 static BiasObj gyroBiasRunning;
 static Axis3f  gyroBias;
 #if defined(SENSORS_GYRO_BIAS_CALCULATE_STDDEV) && defined (GYRO_BIAS_LIGHT_WEIGHT)
@@ -173,6 +233,19 @@ bool sensorsSimReadBaro(baro_t *baro)
   return (pdTRUE == xQueueReceive(barometerDataQueue, baro, 0));
 }
 
+#ifdef NCS_SITL_IMU_PROVENANCE
+void sensorsSimGetImuProvenance(sensorsSimImuProvenance_t* provenance)
+{
+  if (provenance == NULL) {
+    return;
+  }
+
+  taskENTER_CRITICAL();
+  *provenance = latestImuProvenance;
+  taskEXIT_CRITICAL();
+}
+#endif
+
 void sensorsSimAcquire(sensorData_t *sensors)
 {
   sensorsReadGyro(&sensors->gyro);
@@ -205,6 +278,9 @@ static void sensorsTask(void *param)
     {
       case SENSOR_GYRO_ACC_SIM:
         imuSampleReceived = true;
+#ifdef NCS_SITL_IMU_PROVENANCE
+        captureImuProvenance(&p);
+#endif
         processAccGyroMeasurements(&(p.data[1]));
         measurement.type = MeasurementTypeAcceleration;
         measurement.data.acceleration.acc = sensors.acc;
