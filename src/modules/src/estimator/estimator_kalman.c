@@ -174,6 +174,10 @@ static rateSupervisor_t rateSupervisorContext;
 #define WARNING_HOLD_BACK_TIME_MS 2000
 static uint32_t warningBlockTimeMs = 0;
 
+#ifdef NCS_SITL_DIAGNOSTICS
+static bool sitlBoundsViolationLogged = false;
+#endif
+
 #ifdef KALMAN_USE_BARO_UPDATE
 static const bool useBaroUpdate = true;
 #else
@@ -258,6 +262,22 @@ static void kalmanTask(void* parameters) {
 
     if (! kalmanSupervisorIsStateWithinBounds(&coreData)) {
       resetEstimation = true;
+
+#ifdef NCS_SITL_DIAGNOSTICS
+      if (!sitlBoundsViolationLogged) {
+        sitlBoundsViolationLogged = true;
+        DEBUG_PRINT("SITL first bounds violation at %lu ms: pos=(%.6f,%.6f,%.6f) vel=(%.6f,%.6f,%.6f) limits=(%.3f m, %.3f m/s)\n",
+                    (unsigned long)nowMs,
+                    (double)coreData.S[KC_STATE_X],
+                    (double)coreData.S[KC_STATE_Y],
+                    (double)coreData.S[KC_STATE_Z],
+                    (double)coreData.S[KC_STATE_PX],
+                    (double)coreData.S[KC_STATE_PY],
+                    (double)coreData.S[KC_STATE_PZ],
+                    100.0,
+                    10.0);
+      }
+#endif
 
       if (nowMs > warningBlockTimeMs) {
         warningBlockTimeMs = nowMs + WARNING_HOLD_BACK_TIME_MS;
