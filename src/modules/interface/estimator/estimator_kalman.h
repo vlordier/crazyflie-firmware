@@ -69,3 +69,7 @@ void estimatorKalmanGetEstimatedPos(point_t* pos);
  * Copies 9 floats representing the current state rotation matrix
  */
 void estimatorKalmanGetEstimatedRot(float * rotationMatrix);
+
+#ifdef NCS_SITL_KALMAN_TRACE
+uint32_t estimatorKalmanSitlPredictionCount(void);
+#endif

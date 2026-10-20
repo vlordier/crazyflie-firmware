@@ -169,6 +169,13 @@ static state_t taskEstimatorState; // The estimator state produced by the task, 
 static STATS_CNT_RATE_DEFINE(updateCounter, ONE_SECOND);
 static STATS_CNT_RATE_DEFINE(predictionCounter, ONE_SECOND);
 static STATS_CNT_RATE_DEFINE(finalizeCounter, ONE_SECOND);
+#ifdef NCS_SITL_KALMAN_TRACE
+static volatile uint32_t sitlPredictionCount;
+
+uint32_t estimatorKalmanSitlPredictionCount(void) {
+  return __atomic_load_n(&sitlPredictionCount, __ATOMIC_RELAXED);
+}
+#endif
 // static STATS_CNT_RATE_DEFINE(measurementAppendedCounter, ONE_SECOND);
 // static STATS_CNT_RATE_DEFINE(measurementNotAppendedCounter, ONE_SECOND);
 
@@ -266,6 +273,9 @@ static void kalmanTask(void* parameters) {
         axis3fSubSamplerFinalize(&gyroSubSampler);
 
         kalmanCorePredict(&coreData, &accSubSampler.subSample, &gyroSubSampler.subSample, nowMs, quadIsFlying);
+#ifdef NCS_SITL_KALMAN_TRACE
+        __atomic_add_fetch(&sitlPredictionCount, 1U, __ATOMIC_RELAXED);
+#endif
 #ifdef NCS_SITL_DIAGNOSTICS
         if (!sitlVelocityCrossingLogged &&
             (coreData.S[KC_STATE_PZ] < -10.0f || coreData.S[KC_STATE_PZ] > 10.0f)) {

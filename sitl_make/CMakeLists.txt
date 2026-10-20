@@ -22,12 +22,16 @@ option(CRAZYSIM_VERBOSE_DIAGNOSTICS "Print sampled SITL IMU and stabilizer state
 option(CRAZYSIM_TRACE_RING "Capture bounded per-loop SITL state and motor trace" OFF)
 option(CRAZYSIM_IMU_PROVENANCE "Capture sequence, source time, and raw IMU provenance in the SITL trace" OFF)
 option(CRAZYSIM_TRACE_DIAGNOSTICS "Capture ring overflow and skipped-record counters" OFF)
+option(CRAZYSIM_KALMAN_TRACE "Capture Kalman prediction counts in the SITL trace ring" OFF)
 set(CRAZYSIM_TRACE_RING_CAPACITY "32768" CACHE STRING "Maximum SITL diagnostic trace records")
 if(CRAZYSIM_TRACE_DIAGNOSTICS AND NOT CRAZYSIM_TRACE_RING)
   message(FATAL_ERROR "CRAZYSIM_TRACE_DIAGNOSTICS requires CRAZYSIM_TRACE_RING=ON")
 endif()
 if(CRAZYSIM_IMU_PROVENANCE AND NOT CRAZYSIM_TRACE_RING)
   message(FATAL_ERROR "CRAZYSIM_IMU_PROVENANCE requires CRAZYSIM_TRACE_RING=ON")
+endif()
+if(CRAZYSIM_KALMAN_TRACE AND NOT CRAZYSIM_TRACE_RING)
+  message(FATAL_ERROR "CRAZYSIM_KALMAN_TRACE requires CRAZYSIM_TRACE_RING=ON")
 endif()
 
 #######################
@@ -99,6 +103,9 @@ if(CRAZYSIM_TRACE_RING)
     NCS_SITL_TRACE_RING_CAPACITY=${CRAZYSIM_TRACE_RING_CAPACITY}
     NCS_SITL_TRACE_STRIDE=${CRAZYSIM_TRACE_RING_STRIDE}
   )
+endif()
+if(CRAZYSIM_KALMAN_TRACE)
+  add_compile_definitions(NCS_SITL_KALMAN_TRACE)
 endif()
 
 #set (CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --specs=nano.specs -T ${CF2_SITL_SRCS_DIR}/../tools/make/F405/linker/FLASH.ld")

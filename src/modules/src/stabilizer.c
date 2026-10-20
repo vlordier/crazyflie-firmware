@@ -97,6 +97,9 @@ typedef struct {
   uint32_t tick;
   uint32_t step;
   uint64_t imuTimestamp;
+#ifdef NCS_SITL_KALMAN_TRACE
+  uint32_t kalmanPredictionCount;
+#endif
   float attitudeQuaternion[4];
   float gyroDps[3];
   float accelerationG[3];
@@ -137,6 +140,9 @@ static void captureSitlTrace(const stabilizerStep_t step)
   record->tick = (uint32_t)xTaskGetTickCount();
   record->step = step;
   record->imuTimestamp = sensorData.interruptTimestamp;
+#ifdef NCS_SITL_KALMAN_TRACE
+  record->kalmanPredictionCount = estimatorKalmanSitlPredictionCount();
+#endif
 #ifdef NCS_SITL_IMU_PROVENANCE
   sensorsSimImuProvenance_t provenance = {0};
   sensorsSimGetImuProvenance(&provenance);
@@ -219,7 +225,11 @@ void stabilizerSitlTraceDump(void)
       ? sitlTraceNext - sitlTraceCount
       : NCS_SITL_TRACE_RING_CAPACITY - (sitlTraceCount - sitlTraceNext);
 #ifdef NCS_SITL_IMU_PROVENANCE
+#ifdef NCS_SITL_KALMAN_TRACE
+  printf("NCS_TRACE_HEADER schema=3 records=%lu skipped=%lu overwritten=%lu stride=%u capacity=%u sampling_hz=%u record_bytes=%lu memory_bytes=%lu kalman_prediction_count=1\n",
+#else
   printf("NCS_TRACE_HEADER schema=2 records=%lu skipped=%lu overwritten=%lu stride=%u capacity=%u sampling_hz=%u record_bytes=%lu memory_bytes=%lu\n",
+#endif
       (unsigned long)sitlTraceCount, (unsigned long)sitlTraceSkipped,
 #ifdef NCS_SITL_TRACE_DIAGNOSTICS
       (unsigned long)sitlTraceOverwritten, (unsigned)NCS_SITL_TRACE_STRIDE,
@@ -231,7 +241,11 @@ void stabilizerSitlTraceDump(void)
       (unsigned long)sizeof(sitlTraceRecord_t),
       (unsigned long)(sizeof(sitlTraceRecord_t) * NCS_SITL_TRACE_RING_CAPACITY));
 #else
+#ifdef NCS_SITL_KALMAN_TRACE
+  printf("NCS_TRACE_HEADER schema=3 records=%lu skipped=%lu stride=%u capacity=%u sampling_hz=%u record_bytes=%lu memory_bytes=%lu kalman_prediction_count=1\n",
+#else
   printf("NCS_TRACE_HEADER schema=1 records=%lu skipped=%lu stride=%u capacity=%u sampling_hz=%u record_bytes=%lu memory_bytes=%lu\n",
+#endif
       (unsigned long)sitlTraceCount, (unsigned long)sitlTraceSkipped,
       (unsigned)NCS_SITL_TRACE_STRIDE, (unsigned)NCS_SITL_TRACE_RING_CAPACITY,
       (unsigned)(RATE_MAIN_LOOP / NCS_SITL_TRACE_STRIDE), (unsigned long)sizeof(sitlTraceRecord_t),
@@ -244,6 +258,9 @@ void stabilizerSitlTraceDump(void)
             : first + offset - NCS_SITL_TRACE_RING_CAPACITY];
 #ifdef NCS_SITL_IMU_PROVENANCE
     printf("NCS_TRACE tick=%lu step=%lu imu_source_ns=%" PRIu64
+#ifdef NCS_SITL_KALMAN_TRACE
+           " kalman_predictions=%lu"
+#endif
            " imu_seq=%lu imu_rx_tick=%lu imu_seq_gaps=%lu imu_seq_source=%u imu_provenance_valid=%u"
            " raw_acc=%d,%d,%d raw_gyro=%d,%d,%d"
            " quat=%.6f,%.6f,%.6f,%.6f gyro_dps=%.4f,%.4f,%.4f"
@@ -255,12 +272,18 @@ void stabilizerSitlTraceDump(void)
         record->imuTimestamp, (unsigned long)record->imuSequence,
         (unsigned long)record->imuReceiveTick,
         (unsigned long)record->imuSequenceGapCount,
+#ifdef NCS_SITL_KALMAN_TRACE
+        (unsigned long)record->kalmanPredictionCount,
+#endif
         (unsigned)record->imuSequenceIsGazeboHeader,
         (unsigned)record->imuProvenanceValid,
         record->imuRawAcc[0], record->imuRawAcc[1], record->imuRawAcc[2],
         record->imuRawGyro[0], record->imuRawGyro[1], record->imuRawGyro[2],
 #else
     printf("NCS_TRACE tick=%lu step=%lu imu_us=%" PRIu64
+#ifdef NCS_SITL_KALMAN_TRACE
+           " kalman_predictions=%lu"
+#endif
            " quat=%.6f,%.6f,%.6f,%.6f gyro_dps=%.4f,%.4f,%.4f"
            " acc_g=%.5f,%.5f,%.5f setpoint_att_deg=%.3f,%.3f,%.3f"
            " z_m=%.5f setpoint_z_m=%.5f mode=%lu control=%.5f,%.5f,%.5f,%.5f"
@@ -268,6 +291,9 @@ void stabilizerSitlTraceDump(void)
            " motors=%u,%u,%u,%u\n",
         (unsigned long)record->tick, (unsigned long)record->step,
         record->imuTimestamp,
+#ifdef NCS_SITL_KALMAN_TRACE
+        (unsigned long)record->kalmanPredictionCount,
+#endif
 #endif
         (double)record->attitudeQuaternion[0], (double)record->attitudeQuaternion[1],
         (double)record->attitudeQuaternion[2], (double)record->attitudeQuaternion[3],
