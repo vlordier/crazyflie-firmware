@@ -68,6 +68,9 @@
 
 #include "estimator.h"
 #include "estimator_kalman.h"
+#ifdef NCS_SITL_NANO_APP
+#include "estimator_kalman_pose.h"
+#endif
 #include "system.h"
 #include "log.h"
 #include "param.h"
@@ -111,6 +114,12 @@ static SemaphoreHandle_t runTaskSemaphore;
 // functions called by the stabilizer loop
 static SemaphoreHandle_t dataMutex;
 static StaticSemaphore_t dataMutexBuffer;
+
+#ifdef NCS_SITL_NANO_APP
+#define POSE_INIT_QUEUE_LENGTH 2
+static QueueHandle_t poseInitQueue;
+STATIC_MEM_QUEUE_ALLOC(poseInitQueue, POSE_INIT_QUEUE_LENGTH, sizeof(estimatorKalmanPose_t));
+#endif
 
 
 /**
@@ -213,6 +222,21 @@ static const bool useBaroUpdate = false;
 static void kalmanTask(void* parameters);
 static void updateQueuedMeasurements(const uint32_t nowMs, const bool quadIsFlying);
 
+#ifdef NCS_SITL_NANO_APP
+typedef struct {
+  uint32_t* nowMs;
+  uint32_t* nextPredictionMs;
+} poseInitApplyContext_t;
+
+static void applyPoseInitRequest(void* context, const estimatorKalmanPose_t* pose) {
+  poseInitApplyContext_t* applyContext = context;
+  estimatorKalmanPoseApplyToParams(&coreParams, pose);
+  estimatorKalmanInit();
+  *applyContext->nowMs = T2M(xTaskGetTickCount());
+  *applyContext->nextPredictionMs = *applyContext->nowMs;
+}
+#endif
+
 STATIC_MEM_TASK_ALLOC_STACK_NO_DMA_CCM_SAFE(kalmanTask, KALMAN_TASK_STACKSIZE);
 
 // --------------------------------------------------
@@ -227,6 +251,11 @@ void estimatorKalmanTaskInit() {
   ASSERT(runTaskSemaphore);
 
   dataMutex = xSemaphoreCreateMutexStatic(&dataMutexBuffer);
+
+#ifdef NCS_SITL_NANO_APP
+  poseInitQueue = STATIC_MEM_QUEUE_CREATE(poseInitQueue);
+  ASSERT(poseInitQueue);
+#endif
 
   STATIC_MEM_TASK_CREATE(kalmanTask, kalmanTask, KALMAN_TASK_NAME, NULL, KALMAN_TASK_PRI);
 
@@ -248,6 +277,10 @@ static void kalmanTask(void* parameters) {
   while (true) {
     xSemaphoreTake(runTaskSemaphore, portMAX_DELAY);
     nowMs = T2M(xTaskGetTickCount()); // would be nice if this had a precision higher than 1ms...
+#ifdef NCS_SITL_NANO_APP
+    poseInitApplyContext_t poseContext = { .nowMs = &nowMs, .nextPredictionMs = &nextPredictionMs };
+    estimatorKalmanPoseQueueDrain(poseInitQueue, applyPoseInitRequest, &poseContext);
+#endif
 
     if (resetEstimation) {
       estimatorKalmanInit();
@@ -542,6 +575,16 @@ void estimatorKalmanInit(void)
   uint32_t nowMs = T2M(xTaskGetTickCount());
   kalmanCoreInit(&coreData, &coreParams, nowMs);
 }
+
+#ifdef NCS_SITL_NANO_APP
+bool estimatorKalmanInitToPose(float x, float y, float z, float yaw)
+{
+  if (!isInit) {
+    return false;
+  }
+  return estimatorKalmanPoseQueueSubmit(poseInitQueue, x, y, z, yaw);
+}
+#endif
 
 bool estimatorKalmanTest(void)
 {

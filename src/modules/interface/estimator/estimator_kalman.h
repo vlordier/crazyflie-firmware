@@ -61,6 +61,10 @@ bool estimatorKalmanTest(void);
 void estimatorKalman(state_t *state, const stabilizerStep_t stabilizerStep);
 
 void estimatorKalmanTaskInit();
+#ifdef NCS_SITL_NANO_APP
+// Queues a bounded, validated initial pose for application by kalmanTask.
+bool estimatorKalmanInitToPose(float x, float y, float z, float yaw);
+#endif
 bool estimatorKalmanTaskTest();
 
 void estimatorKalmanGetEstimatedPos(point_t* pos);

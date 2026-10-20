@@ -23,6 +23,9 @@ option(CRAZYSIM_TRACE_RING "Capture bounded per-loop SITL state and motor trace"
 option(CRAZYSIM_IMU_PROVENANCE "Capture sequence, source time, and raw IMU provenance in the SITL trace" OFF)
 option(CRAZYSIM_TRACE_DIAGNOSTICS "Capture ring overflow and skipped-record counters" OFF)
 option(CRAZYSIM_KALMAN_TRACE "Capture Kalman prediction counts in the SITL trace ring" OFF)
+option(CRAZYSIM_NANO_APP "Build Nano-C-SLAM application sources into cf2 SITL" OFF)
+set(CRAZYSIM_NANO_APP_DIR "" CACHE PATH "Path to cslam-stm32-app")
+set(CRAZYSIM_NANO_UWB_DIR "" CACHE PATH "Path to uwb-software-library")
 set(CRAZYSIM_TRACE_RING_CAPACITY "32768" CACHE STRING "Maximum SITL diagnostic trace records")
 if(CRAZYSIM_TRACE_DIAGNOSTICS AND NOT CRAZYSIM_TRACE_RING)
   message(FATAL_ERROR "CRAZYSIM_TRACE_DIAGNOSTICS requires CRAZYSIM_TRACE_RING=ON")
@@ -287,8 +290,57 @@ set(SRCS
   ${SRC_VERIF}
 )
 
+if(CRAZYSIM_NANO_APP)
+  if(NOT IS_DIRECTORY "${CRAZYSIM_NANO_APP_DIR}")
+    message(FATAL_ERROR "Set CRAZYSIM_NANO_APP_DIR to the cslam-stm32-app checkout")
+  endif()
+  if(NOT EXISTS "${CRAZYSIM_NANO_APP_DIR}/app_main.c")
+    message(FATAL_ERROR "CRAZYSIM_NANO_APP_DIR must contain app_main.c")
+  endif()
+  if(NOT IS_DIRECTORY "${CRAZYSIM_NANO_UWB_DIR}")
+    message(FATAL_ERROR "Set CRAZYSIM_NANO_UWB_DIR to uwb-software-library")
+  endif()
+
+  include("${CRAZYSIM_NANO_APP_DIR}/sitl/nano_sources.cmake")
+  set(NCS_NANO_APP_C_SOURCES)
+  foreach(source IN LISTS NCS_NANO_APP_SOURCES)
+    if(NOT EXISTS "${CRAZYSIM_NANO_APP_DIR}/${source}")
+      message(FATAL_ERROR "Nano SITL source manifest entry is missing: ${source}")
+    endif()
+    list(APPEND NCS_NANO_APP_C_SOURCES "${CRAZYSIM_NANO_APP_DIR}/${source}")
+  endforeach()
+
+  list(APPEND SRCS
+    ${CF2_SITL_SRCS_DIR}/modules/src/app_handler.c
+    ${CRAZYSIM_NANO_APP_DIR}/app_main.c
+    ${CRAZYSIM_NANO_APP_DIR}/sitl/tof_matrix_sitl.c
+    ${CRAZYSIM_NANO_APP_DIR}/sitl/uwb_api_sitl.c
+    ${CRAZYSIM_NANO_APP_DIR}/sitl/spi_transport_sitl.c
+    ${CRAZYSIM_NANO_UWB_DIR}/uwb_api_message_utils.c
+    ${NCS_NANO_APP_C_SOURCES}
+  )
+endif()
+
 # Create an executable
 add_executable(cf2 ${SRCS})
+
+if(CRAZYSIM_NANO_APP)
+  target_include_directories(cf2 PRIVATE
+    ${CRAZYSIM_NANO_APP_DIR}/src
+    ${CRAZYSIM_NANO_APP_DIR}/src/exploration
+    ${CRAZYSIM_NANO_APP_DIR}/src/spi_comm
+    ${CRAZYSIM_NANO_APP_DIR}/src/tof-matrix
+    ${CRAZYSIM_NANO_APP_DIR}/src/tof-matrix/drivers
+    ${CRAZYSIM_NANO_UWB_DIR}/inc
+    ${CRAZYSIM_NANO_UWB_DIR}/decawave_api
+    ${CF2_SITL_SRCS_DIR}/deck/interface
+  )
+  target_compile_definitions(cf2 PRIVATE
+    CONFIG_APP_PRIORITY=1
+    CONFIG_APP_STACKSIZE=1000
+    NCS_SITL_NANO_APP
+  )
+endif()
 
 target_link_libraries(cf2 ${CMAKE_THREAD_LIBS_INIT} m)
 
