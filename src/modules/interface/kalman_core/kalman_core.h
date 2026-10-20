@@ -149,6 +149,13 @@ void kalmanCoreUpdateWithBaro(kalmanCoreData_t *this, const kalmanCoreParams_t *
  *  - Predicting the current state forward */
 void kalmanCorePredict(kalmanCoreData_t *this, Axis3f *acc, Axis3f *gyro, const uint32_t nowMs, bool quadIsFlying);
 
+/**
+ * @brief Move the prediction time baseline forward when no complete IMU sample is available.
+ *
+ * This prevents a later prediction from integrating the entire startup wait as free fall.
+ */
+void kalmanCoreSkipPrediction(kalmanCoreData_t *this, const uint32_t nowMs);
+
 void kalmanCoreAddProcessNoise(kalmanCoreData_t *this, const kalmanCoreParams_t *params, const uint32_t nowMs);
 
 /**

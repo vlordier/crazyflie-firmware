@@ -579,6 +579,10 @@ void kalmanCorePredict(kalmanCoreData_t* this, Axis3f *acc, Axis3f *gyro, const 
   this->lastPredictionMs = nowMs;
 }
 
+void kalmanCoreSkipPrediction(kalmanCoreData_t* this, const uint32_t nowMs) {
+  this->lastPredictionMs = nowMs;
+}
+
 
 static void addProcessNoiseDt(kalmanCoreData_t *this, const kalmanCoreParams_t *params, float dt)
 {

@@ -84,6 +84,9 @@
 #include "mm_absolute_height.h"
 #include "mm_position.h"
 #include "mm_pose.h"
+#ifdef NCS_SITL_DIAGNOSTICS
+#include "math3d.h"
+#endif
 #include "mm_tdoa.h"
 #include "mm_flow.h"
 #include "mm_tof.h"
@@ -176,6 +179,22 @@ static uint32_t warningBlockTimeMs = 0;
 
 #ifdef NCS_SITL_DIAGNOSTICS
 static bool sitlBoundsViolationLogged = false;
+static bool sitlVelocityCrossingLogged = false;
+static struct {
+  bool seen;
+  uint32_t tickMs;
+  float pose[3];
+  float velocityBefore[3];
+  float velocityAfter[3];
+  float positionVariance[3];
+  float velocityVariance[3];
+  float positionVelocityCovariance[3];
+  float positionInnovation[3];
+  float estimatorQuaternion[4];
+  float poseQuaternion[4];
+  float quaternionResidual[4];
+  float velocityAttitudeCovariance[3][3];
+} sitlLastPoseUpdate;
 #endif
 
 #ifdef KALMAN_USE_BARO_UPDATE
@@ -235,18 +254,45 @@ static void kalmanTask(void* parameters) {
   #endif
 
     // Run the system dynamics to predict the state forward.
-    // if (accSubSampler.count > 0 && gyroSubSampler.count > 0) {
     if (periodicDeadlineIsDue(nowMs, nextPredictionMs)) {
-      axis3fSubSamplerFinalize(&accSubSampler);
-      axis3fSubSamplerFinalize(&gyroSubSampler);
+#ifdef NCS_SITL_DIAGNOSTICS
+      const uint32_t sitlPredictionInputCount = accSubSampler.count;
+      const float sitlPredictionAccLatestZ = accLatest.z;
+      const float sitlPredictionVelocityZ = coreData.S[KC_STATE_PZ];
+      const uint32_t sitlPredictionDtMs = nowMs - coreData.lastPredictionMs;
+#endif
+      if (accSubSampler.count > 0 && gyroSubSampler.count > 0) {
+        axis3fSubSamplerFinalize(&accSubSampler);
+        axis3fSubSamplerFinalize(&gyroSubSampler);
 
-      kalmanCorePredict(&coreData, &accSubSampler.subSample, &gyroSubSampler.subSample, nowMs, quadIsFlying);
-      nextPredictionMs = periodicDeadlineAdvance(nextPredictionMs, nowMs, PREDICTION_UPDATE_INTERVAL_MS);
+        kalmanCorePredict(&coreData, &accSubSampler.subSample, &gyroSubSampler.subSample, nowMs, quadIsFlying);
+#ifdef NCS_SITL_DIAGNOSTICS
+        if (!sitlVelocityCrossingLogged &&
+            (coreData.S[KC_STATE_PZ] < -10.0f || coreData.S[KC_STATE_PZ] > 10.0f)) {
+          sitlVelocityCrossingLogged = true;
+          DEBUG_PRINT("SITL first predicted velocity crossing at %lu ms: pz_before=%.6f pz_after=%.6f dt_ms=%lu accel_count=%lu accel_sample_z=%.6f accel_latest_z=%.6f flying=%u\n",
+                      (unsigned long)nowMs,
+                      (double)sitlPredictionVelocityZ,
+                      (double)coreData.S[KC_STATE_PZ],
+                      (unsigned long)sitlPredictionDtMs,
+                      (unsigned long)sitlPredictionInputCount,
+                      (double)accSubSampler.subSample.z,
+                      (double)sitlPredictionAccLatestZ,
+                      (unsigned int)quadIsFlying);
+        }
+#endif
+        nextPredictionMs = periodicDeadlineAdvance(nextPredictionMs, nowMs, PREDICTION_UPDATE_INTERVAL_MS);
 
-      STATS_CNT_RATE_EVENT(&predictionCounter);
+        STATS_CNT_RATE_EVENT(&predictionCounter);
 
-      if (!rateSupervisorValidate(&rateSupervisorContext, nowMs)) {
-        DEBUG_PRINT("WARNING: Kalman prediction rate off (%lu)\n", (unsigned long)rateSupervisorLatestCount(&rateSupervisorContext));
+        if (!rateSupervisorValidate(&rateSupervisorContext, nowMs)) {
+          DEBUG_PRINT("WARNING: Kalman prediction rate off (%lu)\n", (unsigned long)rateSupervisorLatestCount(&rateSupervisorContext));
+        }
+      } else {
+        // Do not integrate a zero-filled startup interval as free fall when the first
+        // paired IMU measurements have not yet reached the estimator task.
+        kalmanCoreSkipPrediction(&coreData, nowMs);
+        nextPredictionMs = periodicDeadlineAdvance(nextPredictionMs, nowMs, PREDICTION_UPDATE_INTERVAL_MS);
       }
     }
 
@@ -276,6 +322,60 @@ static void kalmanTask(void* parameters) {
                     (double)coreData.S[KC_STATE_PZ],
                     100.0,
                     10.0);
+        DEBUG_PRINT("SITL bounds context: pose_seen=%u pose_tick=%lu pose=(%.6f,%.6f,%.6f) pose_vel_before=(%.6f,%.6f,%.6f) pose_vel_after=(%.6f,%.6f,%.6f) acc=(%.6f,%.6f,%.6f) gyro=(%.6f,%.6f,%.6f) flying=%u\n",
+                    (unsigned int)sitlLastPoseUpdate.seen,
+                    (unsigned long)sitlLastPoseUpdate.tickMs,
+                    (double)sitlLastPoseUpdate.pose[0],
+                    (double)sitlLastPoseUpdate.pose[1],
+                    (double)sitlLastPoseUpdate.pose[2],
+                    (double)sitlLastPoseUpdate.velocityBefore[0],
+                    (double)sitlLastPoseUpdate.velocityBefore[1],
+                    (double)sitlLastPoseUpdate.velocityBefore[2],
+                    (double)sitlLastPoseUpdate.velocityAfter[0],
+                    (double)sitlLastPoseUpdate.velocityAfter[1],
+                    (double)sitlLastPoseUpdate.velocityAfter[2],
+                    (double)accLatest.x,
+                    (double)accLatest.y,
+                    (double)accLatest.z,
+                    (double)gyroLatest.x,
+                    (double)gyroLatest.y,
+                    (double)gyroLatest.z,
+                    (unsigned int)quadIsFlying);
+        DEBUG_PRINT("SITL pose covariance: innovation=(%.6f,%.6f,%.6f) pos_var=(%.6f,%.6f,%.6f) vel_var=(%.6f,%.6f,%.6f) pos_vel_cov=(%.6f,%.6f,%.6f)\n",
+                    (double)sitlLastPoseUpdate.positionInnovation[0],
+                    (double)sitlLastPoseUpdate.positionInnovation[1],
+                    (double)sitlLastPoseUpdate.positionInnovation[2],
+                    (double)sitlLastPoseUpdate.positionVariance[0],
+                    (double)sitlLastPoseUpdate.positionVariance[1],
+                    (double)sitlLastPoseUpdate.positionVariance[2],
+                    (double)sitlLastPoseUpdate.velocityVariance[0],
+                    (double)sitlLastPoseUpdate.velocityVariance[1],
+                    (double)sitlLastPoseUpdate.velocityVariance[2],
+                    (double)sitlLastPoseUpdate.positionVelocityCovariance[0],
+                    (double)sitlLastPoseUpdate.positionVelocityCovariance[1],
+                    (double)sitlLastPoseUpdate.positionVelocityCovariance[2]);
+        DEBUG_PRINT("SITL pose attitude: q_ekf=(%.6f,%.6f,%.6f,%.6f) q_pose=(%.6f,%.6f,%.6f,%.6f) q_residual=(%.6f,%.6f,%.6f,%.6f) vel_att_cov=((%.6f,%.6f,%.6f),(%.6f,%.6f,%.6f),(%.6f,%.6f,%.6f))\n",
+                    (double)sitlLastPoseUpdate.estimatorQuaternion[0],
+                    (double)sitlLastPoseUpdate.estimatorQuaternion[1],
+                    (double)sitlLastPoseUpdate.estimatorQuaternion[2],
+                    (double)sitlLastPoseUpdate.estimatorQuaternion[3],
+                    (double)sitlLastPoseUpdate.poseQuaternion[0],
+                    (double)sitlLastPoseUpdate.poseQuaternion[1],
+                    (double)sitlLastPoseUpdate.poseQuaternion[2],
+                    (double)sitlLastPoseUpdate.poseQuaternion[3],
+                    (double)sitlLastPoseUpdate.quaternionResidual[0],
+                    (double)sitlLastPoseUpdate.quaternionResidual[1],
+                    (double)sitlLastPoseUpdate.quaternionResidual[2],
+                    (double)sitlLastPoseUpdate.quaternionResidual[3],
+                    (double)sitlLastPoseUpdate.velocityAttitudeCovariance[0][0],
+                    (double)sitlLastPoseUpdate.velocityAttitudeCovariance[0][1],
+                    (double)sitlLastPoseUpdate.velocityAttitudeCovariance[0][2],
+                    (double)sitlLastPoseUpdate.velocityAttitudeCovariance[1][0],
+                    (double)sitlLastPoseUpdate.velocityAttitudeCovariance[1][1],
+                    (double)sitlLastPoseUpdate.velocityAttitudeCovariance[1][2],
+                    (double)sitlLastPoseUpdate.velocityAttitudeCovariance[2][0],
+                    (double)sitlLastPoseUpdate.velocityAttitudeCovariance[2][1],
+                    (double)sitlLastPoseUpdate.velocityAttitudeCovariance[2][2]);
       }
 #endif
 
@@ -336,7 +436,42 @@ static void updateQueuedMeasurements(const uint32_t nowMs, const bool quadIsFlyi
         kalmanCoreUpdateWithPosition(&coreData, &m.data.position);
         break;
       case MeasurementTypePose:
+#ifdef NCS_SITL_DIAGNOSTICS
+        sitlLastPoseUpdate.seen = true;
+        sitlLastPoseUpdate.tickMs = nowMs;
+        for (int axis = 0; axis < 3; axis++) {
+          sitlLastPoseUpdate.pose[axis] = m.data.pose.pos[axis];
+          sitlLastPoseUpdate.velocityBefore[axis] = coreData.S[KC_STATE_PX + axis];
+          sitlLastPoseUpdate.positionVariance[axis] = coreData.P[KC_STATE_X + axis][KC_STATE_X + axis];
+          sitlLastPoseUpdate.velocityVariance[axis] = coreData.P[KC_STATE_PX + axis][KC_STATE_PX + axis];
+          sitlLastPoseUpdate.positionVelocityCovariance[axis] = coreData.P[KC_STATE_PX + axis][KC_STATE_X + axis];
+          sitlLastPoseUpdate.positionInnovation[axis] = m.data.pose.pos[axis] - coreData.S[KC_STATE_X + axis];
+          for (int attitudeAxis = 0; attitudeAxis < 3; attitudeAxis++) {
+            sitlLastPoseUpdate.velocityAttitudeCovariance[axis][attitudeAxis] =
+              coreData.P[KC_STATE_PX + axis][KC_STATE_D0 + attitudeAxis];
+          }
+        }
+        for (int axis = 0; axis < 4; axis++) {
+          sitlLastPoseUpdate.estimatorQuaternion[axis] = coreData.q[axis];
+        }
+        sitlLastPoseUpdate.poseQuaternion[0] = m.data.pose.quat.x;
+        sitlLastPoseUpdate.poseQuaternion[1] = m.data.pose.quat.y;
+        sitlLastPoseUpdate.poseQuaternion[2] = m.data.pose.quat.z;
+        sitlLastPoseUpdate.poseQuaternion[3] = m.data.pose.quat.w;
+        struct quat sitlQEkf = mkquat(coreData.q[1], coreData.q[2], coreData.q[3], coreData.q[0]);
+        struct quat sitlQPose = mkquat(m.data.pose.quat.x, m.data.pose.quat.y, m.data.pose.quat.z, m.data.pose.quat.w);
+        struct quat sitlQResidual = qqmul(qinv(sitlQEkf), sitlQPose);
+        sitlLastPoseUpdate.quaternionResidual[0] = sitlQResidual.w;
+        sitlLastPoseUpdate.quaternionResidual[1] = sitlQResidual.x;
+        sitlLastPoseUpdate.quaternionResidual[2] = sitlQResidual.y;
+        sitlLastPoseUpdate.quaternionResidual[3] = sitlQResidual.z;
+#endif
         kalmanCoreUpdateWithPose(&coreData, &m.data.pose);
+#ifdef NCS_SITL_DIAGNOSTICS
+        for (int axis = 0; axis < 3; axis++) {
+          sitlLastPoseUpdate.velocityAfter[axis] = coreData.S[KC_STATE_PX + axis];
+        }
+#endif
         break;
       case MeasurementTypeDistance:
         if(robustTwr){
