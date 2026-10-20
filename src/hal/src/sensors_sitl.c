@@ -324,7 +324,7 @@ void processMagnetometerMeasurements(const uint8_t *buffer)
 void processAccGyroMeasurements(const uint8_t *buffer)
 {
   Axis3f accScaled;
-#ifdef NCS_SITL_DIAGNOSTICS
+#ifdef NCS_SITL_VERBOSE_DIAGNOSTICS
   static uint32_t diagnosticSampleCount;
 #endif
 
@@ -355,7 +355,7 @@ void processAccGyroMeasurements(const uint8_t *buffer)
   sensorsAccAlignToGravity(&accScaled, &sensors.acc);
   applyAxis3fLpf((lpf2pData*)(&accLpf), &sensors.acc);
 
-#ifdef NCS_SITL_DIAGNOSTICS
+#ifdef NCS_SITL_VERBOSE_DIAGNOSTICS
   if (++diagnosticSampleCount % (RATE_MAIN_LOOP / 20) == 0) {
     DEBUG_PRINT("NCS_IMU tick=%lu raw_acc=%d,%d,%d raw_gyro=%d,%d,%d acc_g=%.5f,%.5f,%.5f gyro_dps=%.5f,%.5f,%.5f\n",
         (unsigned long)xTaskGetTickCount(),
