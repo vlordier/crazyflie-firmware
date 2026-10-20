@@ -319,6 +319,7 @@ if(CRAZYSIM_NANO_APP)
     ${CRAZYSIM_NANO_APP_DIR}/app_main.c
     ${CRAZYSIM_NANO_APP_DIR}/sitl/tof_matrix_sitl.c
     ${CRAZYSIM_NANO_APP_DIR}/sitl/uwb_api_sitl.c
+    ${CRAZYSIM_NANO_APP_DIR}/sitl/uwb_sitl_protocol.c
     ${CRAZYSIM_NANO_APP_DIR}/sitl/spi_transport_sitl.c
     ${CRAZYSIM_NANO_UWB_DIR}/uwb_api_message_utils.c
     ${NCS_NANO_APP_C_SOURCES}
