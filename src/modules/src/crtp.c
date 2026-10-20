@@ -59,7 +59,7 @@ static struct crtpLinkOperations *link = &nopLink;
 static struct {
   uint32_t rxCount;
   uint32_t txCount;
-  uint32_t rxSimSensorDrops;
+  uint32_t rxSimStateDrops;
 
   uint16_t rxRate;
   uint16_t txRate;
@@ -180,12 +180,13 @@ void crtpRxTask(void *param)
       {
         if (queues[p.port])
         {
-          if (p.port == CRTP_PORT_SETPOINT_SIM) {
-            // Simulated sensor samples are high-rate and replaceable. Do not
-            // let a full sensor queue block routing of parameter/link-control
-            // packets behind it; count dropped samples for SITL diagnostics.
+          if (p.port == CRTP_PORT_SETPOINT_SIM ||
+              p.port == CRTP_PORT_LOCALIZATION) {
+            // Simulated sensor and odometry samples are high-rate and
+            // replaceable. Do not let full state queues block routing of
+            // parameter/link-control packets behind them.
             if (xQueueSend(queues[p.port], &p, 0) != pdTRUE) {
-              stats.rxSimSensorDrops++;
+              stats.rxSimStateDrops++;
             }
           } else {
             // Keep reliable control and service packets queued in order.
@@ -291,5 +292,5 @@ static void updateStats()
 LOG_GROUP_START(crtp)
 LOG_ADD(LOG_UINT16, rxRate, &stats.rxRate)
 LOG_ADD(LOG_UINT16, txRate, &stats.txRate)
-LOG_ADD(LOG_UINT32, rxSimSensorDrops, &stats.rxSimSensorDrops)
+LOG_ADD(LOG_UINT32, rxSimStateDrops, &stats.rxSimStateDrops)
 LOG_GROUP_STOP(crtp)
