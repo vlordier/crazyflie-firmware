@@ -37,6 +37,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <signal.h>
+#include <string.h>
 
 /* Project includes */
 #include "socketlink.h"
@@ -53,11 +55,39 @@ char CRTP_SERVER_ADDRESS[] = "INADDR_ANY";
 uint16_t crtp_port;
 /* Store an IP address or INADDR_ANY for the server (CF) */
 char* address_host;
+
+static volatile sig_atomic_t shutdownRequested = 0;
+
+static void requestShutdown(int signalNumber)
+{
+  (void)signalNumber;
+  shutdownRequested = 1;
+}
+
+static void shutdownMonitorTask(void *parameters)
+{
+  (void)parameters;
+  while (!shutdownRequested) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+
+  printf("SITL: Shutdown requested; ending scheduler\n");
+  vTaskEndScheduler();
+}
 // /* Store the cf instance unique Identifiant */
 // uint8_t cf_id;
 
 int main(int argc, char **argv) 
 {
+  struct sigaction shutdownAction;
+  memset(&shutdownAction, 0, sizeof(shutdownAction));
+  shutdownAction.sa_handler = requestShutdown;
+  sigemptyset(&shutdownAction.sa_mask);
+  if (sigaction(SIGINT, &shutdownAction, NULL) != 0 ||
+      sigaction(SIGTERM, &shutdownAction, NULL) != 0) {
+    perror("SITL: Failed to install shutdown handlers");
+    return EXIT_FAILURE;
+  }
 
   if (argc == 3){
     crtp_port = atoi(argv[1]);
@@ -84,13 +114,18 @@ int main(int argc, char **argv)
   //Launch the system task that will initialize and start everything
   systemLaunch();
 
-  //Start the FreeRTOS scheduler
+  if (xTaskCreate(shutdownMonitorTask, "sitlShutdown",
+                  configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1,
+                  NULL) != pdPASS) {
+    fprintf(stderr, "SITL: Failed to create shutdown monitor task\n");
+    return EXIT_FAILURE;
+  }
+
+  //Start the FreeRTOS scheduler. The monitor returns here on SIGINT/SIGTERM.
   vTaskStartScheduler();
 
-  //Should never reach this point!
-  while(1);
-
-  return 0;
+  printf("SITL: Scheduler stopped cleanly\n");
+  return EXIT_SUCCESS;
 }
 
 /*
