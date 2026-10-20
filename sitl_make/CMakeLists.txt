@@ -26,6 +26,7 @@ option(CRAZYSIM_KALMAN_TRACE "Capture Kalman prediction counts in the SITL trace
 option(CRAZYSIM_NANO_APP "Build Nano-C-SLAM application sources into cf2 SITL" OFF)
 set(CRAZYSIM_NANO_APP_DIR "" CACHE PATH "Path to cslam-stm32-app")
 set(CRAZYSIM_NANO_UWB_DIR "" CACHE PATH "Path to uwb-software-library")
+set(CRAZYSIM_NANO_NODE_ID "0" CACHE STRING "Nano SITL node ID (0-5)")
 set(CRAZYSIM_TRACE_RING_CAPACITY "32768" CACHE STRING "Maximum SITL diagnostic trace records")
 if(CRAZYSIM_TRACE_DIAGNOSTICS AND NOT CRAZYSIM_TRACE_RING)
   message(FATAL_ERROR "CRAZYSIM_TRACE_DIAGNOSTICS requires CRAZYSIM_TRACE_RING=ON")
@@ -300,6 +301,9 @@ if(CRAZYSIM_NANO_APP)
   if(NOT IS_DIRECTORY "${CRAZYSIM_NANO_UWB_DIR}")
     message(FATAL_ERROR "Set CRAZYSIM_NANO_UWB_DIR to uwb-software-library")
   endif()
+  if(NOT CRAZYSIM_NANO_NODE_ID MATCHES "^[0-5]$")
+    message(FATAL_ERROR "CRAZYSIM_NANO_NODE_ID must be an integer from 0 through 5")
+  endif()
 
   include("${CRAZYSIM_NANO_APP_DIR}/sitl/nano_sources.cmake")
   set(NCS_NANO_APP_C_SOURCES)
@@ -336,9 +340,11 @@ if(CRAZYSIM_NANO_APP)
     ${CF2_SITL_SRCS_DIR}/deck/interface
   )
   target_compile_definitions(cf2 PRIVATE
+    CONFIG_APP_ENABLE
     CONFIG_APP_PRIORITY=1
     CONFIG_APP_STACKSIZE=1000
     NCS_SITL_NANO_APP
+    NCS_SITL_NANO_NODE_ID=${CRAZYSIM_NANO_NODE_ID}
   )
 endif()
 
