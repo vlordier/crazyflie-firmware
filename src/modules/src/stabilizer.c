@@ -82,6 +82,12 @@ static motors_thrust_pwm_t motorPwm;
 #ifndef NCS_SITL_TRACE_RING_CAPACITY
 #define NCS_SITL_TRACE_RING_CAPACITY 32768U
 #endif
+#ifndef NCS_SITL_TRACE_STRIDE
+#define NCS_SITL_TRACE_STRIDE 1U
+#endif
+#if NCS_SITL_TRACE_STRIDE < 1U
+#error "NCS_SITL_TRACE_STRIDE must be at least 1"
+#endif
 
 typedef struct {
   uint32_t tick;
@@ -102,9 +108,15 @@ typedef struct {
 static sitlTraceRecord_t sitlTraceRing[NCS_SITL_TRACE_RING_CAPACITY];
 static uint32_t sitlTraceNext;
 static uint32_t sitlTraceCount;
+static uint32_t sitlTraceSkipped;
 
 static void captureSitlTrace(const stabilizerStep_t step)
 {
+  if ((step % NCS_SITL_TRACE_STRIDE) != 0U) {
+    sitlTraceSkipped++;
+    return;
+  }
+
   sitlTraceRecord_t *record = &sitlTraceRing[sitlTraceNext];
   record->tick = (uint32_t)xTaskGetTickCount();
   record->step = step;
@@ -159,7 +171,10 @@ static void captureSitlTrace(const stabilizerStep_t step)
     record->motorPacket[2 + 2 * index] = (uint8_t)(ratio >> 8);
   }
 
-  sitlTraceNext = (sitlTraceNext + 1U) % NCS_SITL_TRACE_RING_CAPACITY;
+  sitlTraceNext++;
+  if (sitlTraceNext == NCS_SITL_TRACE_RING_CAPACITY) {
+    sitlTraceNext = 0U;
+  }
   if (sitlTraceCount < NCS_SITL_TRACE_RING_CAPACITY) {
     sitlTraceCount++;
   }
@@ -167,15 +182,19 @@ static void captureSitlTrace(const stabilizerStep_t step)
 
 void stabilizerSitlTraceDump(void)
 {
-  const uint32_t first = (sitlTraceNext + NCS_SITL_TRACE_RING_CAPACITY - sitlTraceCount) %
-                         NCS_SITL_TRACE_RING_CAPACITY;
-  printf("NCS_TRACE_HEADER schema=1 records=%lu capacity=%u sampling_hz=%u record_bytes=%lu memory_bytes=%lu\n",
-      (unsigned long)sitlTraceCount, (unsigned)NCS_SITL_TRACE_RING_CAPACITY,
-      (unsigned)RATE_MAIN_LOOP, (unsigned long)sizeof(sitlTraceRecord_t),
+  const uint32_t first = sitlTraceNext >= sitlTraceCount
+      ? sitlTraceNext - sitlTraceCount
+      : NCS_SITL_TRACE_RING_CAPACITY - (sitlTraceCount - sitlTraceNext);
+  printf("NCS_TRACE_HEADER schema=1 records=%lu skipped=%lu stride=%u capacity=%u sampling_hz=%u record_bytes=%lu memory_bytes=%lu\n",
+      (unsigned long)sitlTraceCount, (unsigned long)sitlTraceSkipped,
+      (unsigned)NCS_SITL_TRACE_STRIDE, (unsigned)NCS_SITL_TRACE_RING_CAPACITY,
+      (unsigned)(RATE_MAIN_LOOP / NCS_SITL_TRACE_STRIDE), (unsigned long)sizeof(sitlTraceRecord_t),
       (unsigned long)(sizeof(sitlTraceRecord_t) * NCS_SITL_TRACE_RING_CAPACITY));
   for (uint32_t offset = 0; offset < sitlTraceCount; offset++) {
     const sitlTraceRecord_t *record =
-        &sitlTraceRing[(first + offset) % NCS_SITL_TRACE_RING_CAPACITY];
+        &sitlTraceRing[(first + offset) < NCS_SITL_TRACE_RING_CAPACITY
+            ? first + offset
+            : first + offset - NCS_SITL_TRACE_RING_CAPACITY];
     printf("NCS_TRACE tick=%lu step=%lu imu_us=%" PRIu64
            " quat=%.6f,%.6f,%.6f,%.6f gyro_dps=%.4f,%.4f,%.4f"
            " acc_g=%.5f,%.5f,%.5f setpoint_att_deg=%.3f,%.3f,%.3f"
