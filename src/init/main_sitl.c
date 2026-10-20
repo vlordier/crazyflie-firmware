@@ -46,6 +46,9 @@
 #include "platform.h"
 #include "system.h"
 #include "usec_time.h"
+#ifdef NCS_SITL_TRACE_RING
+#include "stabilizer.h"
+#endif
 
 
 #define CRTP_PORT 19950
@@ -124,6 +127,9 @@ int main(int argc, char **argv)
   //Start the FreeRTOS scheduler. The monitor returns here on SIGINT/SIGTERM.
   vTaskStartScheduler();
 
+#ifdef NCS_SITL_TRACE_RING
+  stabilizerSitlTraceDump();
+#endif
   printf("SITL: Scheduler stopped cleanly\n");
   return EXIT_SUCCESS;
 }

@@ -44,4 +44,9 @@ void stabilizerInit(StateEstimatorType estimator);
  */
 bool stabilizerTest(void);
 
+#ifdef NCS_SITL_TRACE_RING
+/** Dump the buffered SITL trace after the FreeRTOS scheduler stops. */
+void stabilizerSitlTraceDump(void);
+#endif
+
 #endif /* STABILIZER_H_ */

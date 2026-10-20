@@ -18,6 +18,8 @@ if(NOT CRAZYSIM_RATE_MAIN_LOOP STREQUAL "500" AND NOT CRAZYSIM_RATE_MAIN_LOOP ST
   message(FATAL_ERROR "CRAZYSIM_RATE_MAIN_LOOP must be 500 or 1000")
 endif()
 option(CRAZYSIM_DIAGNOSTICS "Log sampled SITL IMU, estimator, setpoint, and thrust values" OFF)
+option(CRAZYSIM_TRACE_RING "Capture bounded per-loop SITL state and motor trace" OFF)
+set(CRAZYSIM_TRACE_RING_CAPACITY "32768" CACHE STRING "Maximum SITL diagnostic trace records")
 
 #######################
 ## Find Dependencies ##
@@ -69,6 +71,12 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -Wno-unused-variable -std=gnu11 -g3 -Wal
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DESTIMATOR=StateEstimatorType${ESTIMATOR} -DCONTROLLER=ControllerType${CONTROLLER} -DCONFIG_SENSORS_SITL -DSENSORS_FORCE=SensorImplementation_sitl")
 if(CRAZYSIM_DIAGNOSTICS)
   add_compile_definitions(NCS_SITL_DIAGNOSTICS)
+endif()
+if(CRAZYSIM_TRACE_RING)
+  if(NOT CRAZYSIM_TRACE_RING_CAPACITY MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "CRAZYSIM_TRACE_RING_CAPACITY must be a positive integer")
+  endif()
+  add_compile_definitions(NCS_SITL_TRACE_RING NCS_SITL_TRACE_RING_CAPACITY=${CRAZYSIM_TRACE_RING_CAPACITY})
 endif()
 
 #set (CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --specs=nano.specs -T ${CF2_SITL_SRCS_DIR}/../tools/make/F405/linker/FLASH.ld")

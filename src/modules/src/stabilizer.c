@@ -26,6 +26,11 @@
 #define DEBUG_MODULE "STAB"
 
 #include <math.h>
+#ifdef NCS_SITL_TRACE_RING
+#include <inttypes.h>
+#include <stdio.h>
+#include "crtp.h"
+#endif
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -72,6 +77,133 @@ static control_t control;
 static motors_thrust_uncapped_t motorThrustUncapped;
 static motors_thrust_uncapped_t motorThrustBatCompUncapped;
 static motors_thrust_pwm_t motorPwm;
+
+#ifdef NCS_SITL_TRACE_RING
+#ifndef NCS_SITL_TRACE_RING_CAPACITY
+#define NCS_SITL_TRACE_RING_CAPACITY 32768U
+#endif
+
+typedef struct {
+  uint32_t tick;
+  uint32_t step;
+  uint64_t imuTimestamp;
+  float attitudeQuaternion[4];
+  float gyroDps[3];
+  float accelerationG[3];
+  float setpointAttitudeDeg[3];
+  float stateZ;
+  float setpointZ;
+  uint32_t controlMode;
+  float controlOutput[4];
+  uint16_t motorRatio[STABILIZER_NR_OF_MOTORS];
+  uint8_t motorPacket[1 + 2 * STABILIZER_NR_OF_MOTORS];
+} sitlTraceRecord_t;
+
+static sitlTraceRecord_t sitlTraceRing[NCS_SITL_TRACE_RING_CAPACITY];
+static uint32_t sitlTraceNext;
+static uint32_t sitlTraceCount;
+
+static void captureSitlTrace(const stabilizerStep_t step)
+{
+  sitlTraceRecord_t *record = &sitlTraceRing[sitlTraceNext];
+  record->tick = (uint32_t)xTaskGetTickCount();
+  record->step = step;
+  record->imuTimestamp = sensorData.interruptTimestamp;
+  record->attitudeQuaternion[0] = state.attitudeQuaternion.x;
+  record->attitudeQuaternion[1] = state.attitudeQuaternion.y;
+  record->attitudeQuaternion[2] = state.attitudeQuaternion.z;
+  record->attitudeQuaternion[3] = state.attitudeQuaternion.w;
+  record->gyroDps[0] = sensorData.gyro.x;
+  record->gyroDps[1] = sensorData.gyro.y;
+  record->gyroDps[2] = sensorData.gyro.z;
+  record->accelerationG[0] = sensorData.acc.x;
+  record->accelerationG[1] = sensorData.acc.y;
+  record->accelerationG[2] = sensorData.acc.z;
+  record->setpointAttitudeDeg[0] = setpoint.attitude.roll;
+  record->setpointAttitudeDeg[1] = setpoint.attitude.pitch;
+  record->setpointAttitudeDeg[2] = setpoint.attitude.yaw;
+  record->stateZ = state.position.z;
+  record->setpointZ = setpoint.position.z;
+  record->controlMode = (uint32_t)control.controlMode;
+  switch (control.controlMode) {
+    case controlModeLegacy:
+      record->controlOutput[0] = (float)control.roll;
+      record->controlOutput[1] = (float)control.pitch;
+      record->controlOutput[2] = (float)control.yaw;
+      record->controlOutput[3] = control.thrust;
+      break;
+    case controlModeForceTorque:
+      record->controlOutput[0] = control.thrustSi;
+      record->controlOutput[1] = control.torqueX;
+      record->controlOutput[2] = control.torqueY;
+      record->controlOutput[3] = control.torqueZ;
+      break;
+    case controlModeForce:
+      for (int index = 0; index < STABILIZER_NR_OF_MOTORS; index++) {
+        record->controlOutput[index] = control.normalizedForces[index];
+      }
+      break;
+    default:
+      record->controlOutput[0] = 0.0f;
+      record->controlOutput[1] = 0.0f;
+      record->controlOutput[2] = 0.0f;
+      record->controlOutput[3] = 0.0f;
+      break;
+  }
+  record->motorPacket[0] = (uint8_t)CRTP_HEADER(CRTP_PORT_SETPOINT_SIM, 0);
+  for (int index = 0; index < STABILIZER_NR_OF_MOTORS; index++) {
+    const uint16_t ratio = motorPwm.list[index];
+    record->motorRatio[index] = ratio;
+    // This is the byte order copied from the packed uint16_t motorPower payload.
+    record->motorPacket[1 + 2 * index] = (uint8_t)(ratio & 0xffU);
+    record->motorPacket[2 + 2 * index] = (uint8_t)(ratio >> 8);
+  }
+
+  sitlTraceNext = (sitlTraceNext + 1U) % NCS_SITL_TRACE_RING_CAPACITY;
+  if (sitlTraceCount < NCS_SITL_TRACE_RING_CAPACITY) {
+    sitlTraceCount++;
+  }
+}
+
+void stabilizerSitlTraceDump(void)
+{
+  const uint32_t first = (sitlTraceNext + NCS_SITL_TRACE_RING_CAPACITY - sitlTraceCount) %
+                         NCS_SITL_TRACE_RING_CAPACITY;
+  printf("NCS_TRACE_HEADER schema=1 records=%lu capacity=%u sampling_hz=%u record_bytes=%lu memory_bytes=%lu\n",
+      (unsigned long)sitlTraceCount, (unsigned)NCS_SITL_TRACE_RING_CAPACITY,
+      (unsigned)RATE_MAIN_LOOP, (unsigned long)sizeof(sitlTraceRecord_t),
+      (unsigned long)(sizeof(sitlTraceRecord_t) * NCS_SITL_TRACE_RING_CAPACITY));
+  for (uint32_t offset = 0; offset < sitlTraceCount; offset++) {
+    const sitlTraceRecord_t *record =
+        &sitlTraceRing[(first + offset) % NCS_SITL_TRACE_RING_CAPACITY];
+    printf("NCS_TRACE tick=%lu step=%lu imu_us=%" PRIu64
+           " quat=%.6f,%.6f,%.6f,%.6f gyro_dps=%.4f,%.4f,%.4f"
+           " acc_g=%.5f,%.5f,%.5f setpoint_att_deg=%.3f,%.3f,%.3f"
+           " z_m=%.5f setpoint_z_m=%.5f mode=%lu control=%.5f,%.5f,%.5f,%.5f"
+           " packet=%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x"
+           " motors=%u,%u,%u,%u\n",
+        (unsigned long)record->tick, (unsigned long)record->step,
+        record->imuTimestamp,
+        (double)record->attitudeQuaternion[0], (double)record->attitudeQuaternion[1],
+        (double)record->attitudeQuaternion[2], (double)record->attitudeQuaternion[3],
+        (double)record->gyroDps[0], (double)record->gyroDps[1], (double)record->gyroDps[2],
+        (double)record->accelerationG[0], (double)record->accelerationG[1], (double)record->accelerationG[2],
+        (double)record->setpointAttitudeDeg[0], (double)record->setpointAttitudeDeg[1],
+        (double)record->setpointAttitudeDeg[2], (double)record->stateZ, (double)record->setpointZ,
+        (unsigned long)record->controlMode, (double)record->controlOutput[0],
+        (double)record->controlOutput[1], (double)record->controlOutput[2], (double)record->controlOutput[3],
+        (unsigned)record->motorPacket[0], (unsigned)record->motorPacket[1],
+        (unsigned)record->motorPacket[2], (unsigned)record->motorPacket[3],
+        (unsigned)record->motorPacket[4], (unsigned)record->motorPacket[5],
+        (unsigned)record->motorPacket[6], (unsigned)record->motorPacket[7],
+        (unsigned)record->motorPacket[8],
+        record->motorRatio[0], record->motorRatio[1],
+        record->motorRatio[2], record->motorRatio[3]);
+  }
+  printf("NCS_TRACE_END records=%lu\n", (unsigned long)sitlTraceCount);
+  fflush(stdout);
+}
+#endif
 
 // For scratch storage - never logged or passed to other subsystems.
 static setpoint_t tempSetpoint;
@@ -366,6 +498,9 @@ static void stabilizerTask(void* param)
         motorsStop();
         #endif
       }
+#ifdef NCS_SITL_TRACE_RING
+      captureSitlTrace(stabilizerStep);
+#endif
 
       // Compute compressed log formats
       compressState();
