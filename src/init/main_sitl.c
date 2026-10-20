@@ -118,7 +118,7 @@ int main(int argc, char **argv)
   systemLaunch();
 
   if (xTaskCreate(shutdownMonitorTask, "sitlShutdown",
-                  configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1,
+                  configMINIMAL_STACK_SIZE, NULL, configMAX_PRIORITIES - 1,
                   NULL) != pdPASS) {
     fprintf(stderr, "SITL: Failed to create shutdown monitor task\n");
     return EXIT_FAILURE;
