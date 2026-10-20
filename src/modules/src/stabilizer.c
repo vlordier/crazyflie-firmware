@@ -58,6 +58,9 @@
 #include "supervisor.h"
 
 #include "estimator.h"
+#ifdef NCS_SITL_KALMAN_TRACE
+#include "estimator/estimator_kalman.h"
+#endif
 //#include "usddeck.h"
 #include "quatcompress.h"
 #include "statsCnt.h"
