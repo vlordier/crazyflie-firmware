@@ -272,12 +272,13 @@ void stabilizerSitlTraceDump(void)
            " packet=%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x"
            " motors=%u,%u,%u,%u\n",
         (unsigned long)record->tick, (unsigned long)record->step,
-        record->imuTimestamp, (unsigned long)record->imuSequence,
-        (unsigned long)record->imuReceiveTick,
-        (unsigned long)record->imuSequenceGapCount,
+        record->imuTimestamp,
 #ifdef NCS_SITL_KALMAN_TRACE
         (unsigned long)record->kalmanPredictionCount,
 #endif
+        (unsigned long)record->imuSequence,
+        (unsigned long)record->imuReceiveTick,
+        (unsigned long)record->imuSequenceGapCount,
         (unsigned)record->imuSequenceIsGazeboHeader,
         (unsigned)record->imuProvenanceValid,
         record->imuRawAcc[0], record->imuRawAcc[1], record->imuRawAcc[2],
