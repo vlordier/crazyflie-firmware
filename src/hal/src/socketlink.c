@@ -26,6 +26,7 @@
  */
 #define DEBUG_MODULE "SOCKET_LINK"
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "config.h"
@@ -74,6 +75,7 @@ static struct crtpLinkOperations socketlinkOp =
 
 static CRTPPacket p;
 static uint8_t socket_buff[33];
+static uint32_t droppedPackets;
 
 static void socketlinkTask(void *param)
 {
@@ -92,9 +94,16 @@ static void socketlinkTask(void *param)
       recvlen = recvfrom(fd, p.raw, sizeof(p.raw), 0, (struct sockaddr *)&remaddr, &addrlen);
       if (recvlen > 0){
         p.size = recvlen - 1; // We remove the header size
-        // Backpressure the UDP reader when the firmware router is briefly
-        // behind instead of turning one full queue into a fatal SITL assert.
-        ASSERT(xQueueSend(crtpPacketDelivery, &p, portMAX_DELAY) == pdPASS);
+        // The POSIX FreeRTOS port can run this socket task while another task
+        // suspends the scheduler. A blocking queue send is illegal in that
+        // window, so keep UDP ingestion nonblocking and count queue overflow.
+        if (xQueueSend(crtpPacketDelivery, &p, 0) != pdPASS) {
+          droppedPackets++;
+          if ((droppedPackets & 0xffU) == 1U) {
+            DEBUG_PRINT("Dropped CRTP UDP packet; queue-full count=%lu\n",
+                        (unsigned long)droppedPackets);
+          }
+        }
       } else {
         DEBUG_PRINT("error : %s \n" , strerror(errno));
       }
